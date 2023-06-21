@@ -12,6 +12,7 @@ namespace PhpTek\Sentry\Handler;
 use Throwable;
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\Logger;
+use Monolog\LogRecord;
 use Sentry\Severity;
 use Sentry\EventHint;
 use Sentry\Stacktrace;
@@ -25,6 +26,7 @@ use SilverStripe\Core\Config\Config;
 use PhpTek\Sentry\Log\SentryLogger;
 use PhpTek\Sentry\Adaptor\SentryAdaptor;
 use PhpTek\Sentry\Adaptor\SentrySeverity;
+use Sentry\ClientInterface;
 
 /**
  * Monolog handler to send messages to a Sentry (https://github.com/getsentry/sentry) server
@@ -53,6 +55,8 @@ class SentryHandler extends AbstractProcessingHandler
      */
     private static $counter = 0;
 
+    private ClientInterface $client;
+
     /**
      * @param  int     $level
      * @param  boolean $bubble
@@ -61,16 +65,16 @@ class SentryHandler extends AbstractProcessingHandler
      */
     public function __construct($level = null, bool $bubble = true, array $config = [])
     {
-        $client = ClientBuilder::create(SentryAdaptor::get_opts() ?: [])->getClient();
+        $this->client = ClientBuilder::create(SentryAdaptor::get_opts() ?: [])->getClient();
         $level = $level ?: $this->config()->get('log_level');
-        $level = Logger::getLevels()[$level] ?? Logger::DEBUG;
+        $level = $level ?? Logger::DEBUG;
 
-        SentrySdk::setCurrentHub(new Hub($client));
+        SentrySdk::setCurrentHub(new Hub($this->client));
         
         $config['level'] = $level;
 
-        $this->logger = SentryLogger::factory($client, $config);
-        $this->client = $client;
+        $this->logger = SentryLogger::factory($this->client, $config);
+
 
         parent::__construct($level, $bubble);
     }
@@ -79,25 +83,15 @@ class SentryHandler extends AbstractProcessingHandler
      * write() forms the entry point into the physical sending of the error. The
      * sending itself is done by the current adaptor's `send()` method.
      *
-     * @param  array $record An array of error-context metadata with the following
-     *                       available keys:
-     *
-     *                       - message
-     *                       - context
-     *                       - level
-     *                       - level_name
-     *                       - channel
-     *                       - datetime
-     *                       - extra
-     *                       - formatted
+     * @param  LogRecord 
      *
      * @return void
      */
-    protected function write(array $record): void
+    protected function write(LogRecord $record): void
     {
         $isException = (
-            isset($record['context']['exception'])
-            && $record['context']['exception'] instanceof Throwable
+            isset($record->context['exception'])
+            && $record->context['exception'] instanceof Throwable
         );
 
         // Ref #65: For some reason, throwing an exception finds its way into both exception + non-exception
@@ -106,8 +100,8 @@ class SentryHandler extends AbstractProcessingHandler
             static::$counter ++;
         }
 
-        $record = array_merge($record, [
-            'timestamp' => $record['datetime']->getTimestamp(),
+        $record = $record->with([
+            'timestamp' => $record->datetime->getTimestamp(),
         ]);
         $adaptor = $this->logger->getAdaptor();
 
@@ -132,14 +126,14 @@ class SentryHandler extends AbstractProcessingHandler
 
         if ($isException) {
             $this->client->captureException(
-                $record['context']['exception'],
+                $record->context['exception'],
                 $adaptor->getContext(),
                 $eventHint
             );
         } else {
             $this->client->captureMessage(
-                $record['message'],
-                new Severity(SentrySeverity::process_severity($record['level_name'])),
+                $record->message,
+                new Severity(SentrySeverity::process_severity($record->level->getName())),
                 $adaptor->getContext(),
                 $eventHint
             );

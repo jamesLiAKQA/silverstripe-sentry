@@ -11,6 +11,7 @@ namespace PhpTek\Sentry\Log;
 
 use Composer\InstalledVersions;
 use Monolog\Logger;
+use Monolog\LogRecord;
 use Sentry\Frame;
 use Sentry\Client;
 use SilverStripe\Control\Director;
@@ -298,17 +299,17 @@ class SentryLogger
      * As it is, it requires a little more work to make it on-par with Sentry's defaults (which is this
      * module's default also).
      *
-     * @param  array $record
+     * @param LogRecord $record
      * @return array An array of filtered Sentry\Frame objects.
      */
-    public static function backtrace(array $record): array
+    public static function backtrace(LogRecord $record): array
     {
         if (!empty($record['context']['trace'])) {
             // Provided trace
-            $bt = $record['context']['trace'];
-        } else if (isset($record['context']['exception'])) {
+            $bt = $record->context['trace'];
+        } else if (isset($record->context['exception'])) {
             // Generate trace from exception
-            $bt = $record['context']['exception']->getTrace();
+            $bt = $record->context['exception']->getTrace();
         } else {
             // Failover: build custom trace
             $bt = debug_backtrace();

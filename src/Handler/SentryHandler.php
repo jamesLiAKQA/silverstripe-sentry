@@ -100,9 +100,9 @@ class SentryHandler extends AbstractProcessingHandler
             static::$counter ++;
         }
 
-        $record = $record->with([
-            'timestamp' => $record->datetime->getTimestamp(),
-        ]);
+        $record = $record->with(
+            extra: ['timestamp' => $record->datetime->getTimestamp()]
+        );
         $adaptor = $this->logger->getAdaptor();
 
         // For reasons..this is the only spot where we're able to getCurrentUser()
